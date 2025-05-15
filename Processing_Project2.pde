@@ -2,7 +2,7 @@ PImage eyeImg;
 
 int numStars = 200;
 float[][] stars;
-float offset = 0; 
+float offset = 0;
 
 ArrayList<Monster> monsters = new ArrayList<Monster>();
 int numMonsters = 8;
@@ -12,11 +12,11 @@ void setup() {
   fullScreen();
   noStroke();
   generateStars();
-  eyeImg = loadImage("eye.png"); 
-for (int i = 0; i < numMonsters; i++) {
+  eyeImg = loadImage("eye.png");
+  for (int i = 0; i < numMonsters; i++) {
     float mx = random(width);
-    float my = -random(height); 
-    float msize = random(80, 150); 
+    float my = -random(height);
+    float msize = random(80, 150);
     monsters.add(new Monster(mx, my, msize));
   }
 }
@@ -24,38 +24,33 @@ for (int i = 0; i < numMonsters; i++) {
 void draw() {
   background(0);
 
-  // Draw sky gradient that darkens from top to bottom based on offset
+  // sky gradient that darkens from top to bottom based on offset
   for (int y = 0; y < height; y++) {
-    float altitude = offset + (height - y); // Reversed so top gets darker first
-    float inter = map(altitude, 0, height * 1.5, 0, 1); // Controls darkness gradient
-    
+    float altitude = offset + (height - y);
+    float inter = map(altitude, 0, height * 1.5, 0, 1); // darkness gradient
+
     color c1 = color(0, 100, 200);   // base sky blue
     color c2 = color(255, 100, 150); // base pink sunset
 
     color from = lerpColor(c1, color(10), inter);
     color to = lerpColor(c2, color(0), inter);
     color rowColor = lerpColor(from, to, float(y) / height);
-    
+
     stroke(rowColor);
     line(0, y, width, y);
   }
 
   drawStars();
   updateStars();
-  offset += 0.5; // simulate upward motion
+  offset += 0.5;
 
-  // Spawn monsters once sky is dark enough
-  
-
-  // Update, draw, and recycle monsters
   for (Monster m : monsters) {
     m.update();
     m.display();
-
-    // Recycle monster if it moves off screen
+    // recycle monsters when off screen
     if (m.y > height + 50) {
       m.x = random(width);
-      m.baseY = -random(100, 300); // respawn above screen
+      m.baseY = -random(100, 300);
       m.size = random(30, 60);
     }
   }
@@ -66,7 +61,7 @@ void generateStars() {
   stars = new float[numStars][2];
   for (int i = 0; i < numStars; i++) {
     stars[i][0] = random(width);
-    stars[i][1] = random(height * 2); // stars appear gradually as you move up
+    stars[i][1] = random(height * 2);
   }
 }
 
@@ -82,7 +77,7 @@ void drawStars() {
 
       if (darkness > 0.2) {
         float alpha = map(darkness, 0.2, 1.0, 50, 255);
-        float size = map(darkness, 0.2, 1.0, 2, 4); 
+        float size = map(darkness, 0.2, 1.0, 2, 4);
         alpha = constrain(alpha, 50, 255);
 
         fill(255, alpha);
@@ -91,7 +86,7 @@ void drawStars() {
       }
     }
 
-    // Recycle star if it has scrolled off bottom
+    // recycle stars
     if (y >= height * 2) {
       stars[i][0] = random(width);
       stars[i][1] = -offset - random(height); // place back above screen
@@ -117,6 +112,7 @@ class Monster {
   float baseY;
   float offset;
   float fallSpeed;
+  boolean popped = false;
 
   Monster(float x, float y, float size) {
     this.x = x;
@@ -133,7 +129,33 @@ class Monster {
   }
 
   void display() {
-    imageMode(CENTER);
-    image(eyeImg, x, y, size * 1.5, size);
+    if (!popped) {
+      imageMode(CENTER);
+      image(eyeImg, x, y, size * 1.5, size);
+    } else {
+      // add explosion image here
+    }
+  }
+
+  boolean isClicked(float mx, float my) {
+    float w = size * 1.5;
+    float h = size;
+    return !popped && dist(mx, my, x, y) < max(w, h) / 2;
+  }
+}
+
+void mousePressed() {
+  for (int i = monsters.size() - 1; i >= 0; i--) {
+    Monster m = monsters.get(i);
+    if (m.isClicked(mouseX, mouseY)) {
+      m.popped = true;
+
+      float mx = random(width);
+      float my = -random(height);
+      float msize = random(80, 150);
+      monsters.set(i, new Monster(mx, my, msize));
+
+      break;
+    }
   }
 }
