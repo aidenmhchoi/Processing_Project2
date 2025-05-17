@@ -1,62 +1,62 @@
-PImage eyeImg;
+PImage eyeImg, explosionImg;
+import processing.serial.*;
 
+Serial myPort;
+String incoming;
+
+int sensorValue = 100;
 int numStars = 200;
 float[][] stars;
 float offset = 0;
+float hue = 210; //hsb color
 
 ArrayList<Monster> monsters = new ArrayList<Monster>();
+ArrayList<Explosion> explosions = new ArrayList<Explosion>();
+
 int numMonsters = 8;
-boolean monstersSpawned = false;
 
 void setup() {
+  colorMode(HSB, 360, 100, 100);
+  println(Serial.list());  // List all available ports
+  myPort = new Serial(this, Serial.list()[3], 9600);  // Choose correct port
   fullScreen();
   noStroke();
   generateStars();
+
   eyeImg = loadImage("eye.png");
+  explosionImg = loadImage("explosion.png");
+
   for (int i = 0; i < numMonsters; i++) {
-    float mx = random(width);
-    float my = -random(height);
-    float msize = random(80, 150);
-    monsters.add(new Monster(mx, my, msize));
+    monsters.add(new Monster(random(width), -random(height), random(80, 150)));
   }
 }
 
 void draw() {
-  background(0);
-
-  // sky gradient that darkens from top to bottom based on offset
-  for (int y = 0; y < height; y++) {
-    float altitude = offset + (height - y);
-    float inter = map(altitude, 0, height * 1.5, 0, 1); // darkness gradient
-
-    color c1 = color(0, 100, 200);   // base sky blue
-    color c2 = color(255, 100, 150); // base pink sunset
-
-    color from = lerpColor(c1, color(10), inter);
-    color to = lerpColor(c2, color(0), inter);
-    color rowColor = lerpColor(from, to, float(y) / height);
-
-    stroke(rowColor);
-    line(0, y, width, y);
-  }
-
+  drawSkyGradient();
   drawStars();
   updateStars();
   offset += 0.5;
 
+  // Update and display monsters
   for (Monster m : monsters) {
     m.update();
     m.display();
-    // recycle monsters when off screen
+
     if (m.y > height + 50) {
-      m.x = random(width);
-      m.baseY = -random(100, 300);
-      m.size = random(30, 60);
+      m.reset();
+    }
+  }
+
+  // Display explosions
+  for (int i = explosions.size() - 1; i >= 0; i--) {
+    Explosion e = explosions.get(i);
+    e.display();
+    if (e.isDone()) {
+      explosions.remove(i);
     }
   }
 }
 
-// Generate random star positions
 void generateStars() {
   stars = new float[numStars][2];
   for (int i = 0; i < numStars; i++) {
@@ -78,69 +78,52 @@ void drawStars() {
       if (darkness > 0.2) {
         float alpha = map(darkness, 0.2, 1.0, 50, 255);
         float size = map(darkness, 0.2, 1.0, 2, 4);
-        alpha = constrain(alpha, 50, 255);
-
         fill(255, alpha);
         noStroke();
         ellipse(x, y, size, size);
       }
     }
 
-    // recycle stars
     if (y >= height * 2) {
       stars[i][0] = random(width);
-      stars[i][1] = -offset - random(height); // place back above screen
+      stars[i][1] = -offset - random(height);
     }
   }
 }
 
 void updateStars() {
   for (int i = 0; i < numStars; i++) {
-    stars[i][1] += 0.5; // make stars fall
+    stars[i][1] += 0.5;
 
     if (stars[i][1] + offset > height * 2) {
-      // reset star to top
       stars[i][0] = random(width);
-      stars[i][1] = -offset; // places star just above visible range
+      stars[i][1] = -offset;
     }
   }
 }
 
-class Monster {
-  float x, y;
-  float size;
-  float baseY;
-  float offset;
-  float fallSpeed;
-  boolean popped = false;
+void drawSkyGradient() {
 
-  Monster(float x, float y, float size) {
-    this.x = x;
-    this.y = y;
-    this.baseY = y;
-    this.size = size;
-    this.offset = random(TWO_PI);
-    this.fallSpeed = random(0.3, 0.8);
-  }
-
-  void update() {
-    baseY += fallSpeed;
-    y = baseY + sin(offset + frameCount * 0.05) * 10; // wavy float
-  }
-
-  void display() {
-    if (!popped) {
-      imageMode(CENTER);
-      image(eyeImg, x, y, size * 1.5, size);
-    } else {
-      // add explosion image here
+  if (myPort.available() > 0) {
+    String incoming = myPort.readStringUntil('\n');
+    if (incoming != null) {
+      incoming = trim(incoming);
+      if (incoming.length() > 0) {
+        sensorValue = int(incoming);
+      }
     }
   }
 
-  boolean isClicked(float mx, float my) {
-    float w = size * 1.5;
-    float h = size;
-    return !popped && dist(mx, my, x, y) < max(w, h) / 2;
+  float maxBrightness = map(sensorValue, 0, 1023, 0, 100);
+
+  for (int y = 0; y < height; y++) {
+    float altitude = offset + (height - y);
+    float inter = map(altitude, 0, height * 1.5, 0, 1);
+    float sat = lerp(30, 100, inter);
+    float bright = sensorValue; // Fade to black
+
+    stroke(hue, sat, bright);
+    line(0, y, width, y);
   }
 }
 
@@ -148,14 +131,67 @@ void mousePressed() {
   for (int i = monsters.size() - 1; i >= 0; i--) {
     Monster m = monsters.get(i);
     if (m.isClicked(mouseX, mouseY)) {
-      m.popped = true;
-
-      float mx = random(width);
-      float my = -random(height);
-      float msize = random(80, 150);
-      monsters.set(i, new Monster(mx, my, msize));
-
+      explosions.add(new Explosion(m.x, m.y, m.size));  // Add explosion
+      m.reset(); // Immediately recycle monster
       break;
     }
+  }
+}
+
+class Monster {
+  float x, y, size, baseY, offset, fallSpeed;
+
+  Monster(float x, float y, float size) {
+    this.x = x;
+    this.y = y;
+    this.baseY = y;
+    this.size = size;
+    this.offset = random(10);
+    this.fallSpeed = random(0.3, 0.8);
+  }
+
+  void update() {
+    baseY += fallSpeed;
+    y = baseY + sin(offset + frameCount * 0.05) * 10;
+  }
+
+  void display() {
+    imageMode(CENTER);
+    image(eyeImg, x, y, size * 1.5, size);
+  }
+
+  void reset() {
+    x = random(width);
+    baseY = -random(100, 300);
+    size = random(80, 150);
+    offset = random(10);
+    fallSpeed = random(0.3, 0.8);
+  }
+
+  boolean isClicked(float mx, float my) {
+    float w = size * 1.5;
+    float h = size;
+    return dist(mx, my, x, y) < max(w, h) / 2;
+  }
+}
+
+class Explosion {
+  float x, y, size;
+  int startTime;
+
+  Explosion(float x, float y, float size) {
+    this.x = x;
+    this.y = y;
+    this.size = size;
+    this.startTime = millis();
+  }
+
+  boolean isDone() {
+    return millis() - startTime > 700;
+  }
+
+  void display() {
+    imageMode(CENTER);
+    image(explosionImg, x, y, size*1.5, size*1.5);
   }
 }
