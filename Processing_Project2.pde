@@ -18,7 +18,7 @@ int numMonsters = 8;
 void setup() {
   colorMode(HSB, 360, 100, 100);
   println(Serial.list());  // List all available ports
-  myPort = new Serial(this, Serial.list()[3], 9600);  // Choose correct port
+  myPort = new Serial(this, Serial.list()[4], 9600);  // Choose correct port
   fullScreen();
   noStroke();
   generateStars();
